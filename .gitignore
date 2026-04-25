@@ -36,3 +36,8 @@ build/
 
 # OS
 .DS_Store
+
+*.swp
+Thumbs.db
+*.log
+SMEMBERS

@@ -9,22 +9,28 @@ import java.util.*;
 
 @Service
 public class CrawlerEngine {
-    private Queue<String> queue = new LinkedList<>();
-    private Set<String> visited = new HashSet<>();
+    private final Queue<String> queue = new LinkedList<>();
+    // private final Set<String> visited = new HashSet<>();
     private final PageFetcher pageFetcher;
     private final PageExtractor pageExtractor;
+    private final RedisService redisService;
 
-    public CrawlerEngine(PageFetcher pageFetcher, PageExtractor pageExtractor) {
+    public CrawlerEngine(PageFetcher pageFetcher, PageExtractor pageExtractor, RedisService redisService) {
         this.pageFetcher = pageFetcher;
         this.pageExtractor = pageExtractor;
+        this.redisService = redisService;
     }
 
     public void beginCrawl(String url, int maxPages) {
         queue.add(url);
-        visited.add(url);
+        redisService.markVisited(url);
+        // visited.add(url);
 
-        while (!queue.isEmpty() && visited.size() < maxPages) {
+        int crawledCount = 0;
+
+        while (!queue.isEmpty() && crawledCount < maxPages) { //visited.size() < maxPages
             String currentUrl = queue.poll();
+            crawledCount++;
 
             Document doc = pageFetcher.fetchPage(currentUrl);
             if (doc == null) continue;
@@ -34,11 +40,12 @@ public class CrawlerEngine {
             Elements links = doc.select("a[href]");
             for (Element link : links) {
                 String absUrl = link.attr("abs:href");
-                if (absUrl.isEmpty() || visited.contains(absUrl) || !absUrl.startsWith("http")) {
+                if (absUrl.isEmpty() ||  redisService.isVisited(absUrl) || !absUrl.startsWith("http")) {
                     continue;
                 }
                 queue.add(absUrl);
-                visited.add(absUrl);
+                redisService.markVisited(absUrl);
+                // visited.add(absUrl);
             }
         }
     }
