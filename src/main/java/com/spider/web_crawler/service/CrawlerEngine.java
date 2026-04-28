@@ -6,16 +6,20 @@ import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class CrawlerEngine {
-    private final Queue<String> queue = new LinkedList<>();
+    // private final Queue<String> queue = new LinkedList<>();
     // private final Set<String> visited = new HashSet<>();
+    private final Queue<String> queue = new ConcurrentLinkedQueue<>();
     private final PageFetcher pageFetcher;
     private final PageExtractor pageExtractor;
     private final RedisService redisService;
+    private final AtomicInteger crawledCount = new AtomicInteger(0); //crawl counter
 
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
 
@@ -29,14 +33,14 @@ public class CrawlerEngine {
         queue.add(url);
         redisService.markVisited(url);
         // visited.add(url);
+        int THREADS = 10;
 
-        int crawledCount = 0;
-
-            for (int i = 0; i < maxPages; i++) {
-                executor.submit(this::crawlTask);
-            }
+        for (int i = 0; i < THREADS; i++) {
+            executor.submit(() -> crawlTask(maxPages));
         }
-
+        System.out.println("Starting crawl with seed URL: " + url + ", maxPages: " + maxPages);
+        System.out.println("Crawled: " + crawledCount.get());
+    }
 //        while (!queue.isEmpty() && crawledCount < maxPages) { //visited.size() < maxPages
 //            String currentUrl = queue.poll();
 //            crawledCount++;
@@ -56,16 +60,23 @@ public class CrawlerEngine {
 //                redisService.markVisited(absUrl);
 //                // visited.add(absUrl);
 //            }
-private void crawlTask() {
+private void crawlTask(int maxPages) {
     while (true) {
-        String currentUrl;
 
-        synchronized (queue) {
-            if (queue.isEmpty()) return;
-            currentUrl = queue.poll();
+        if (crawledCount.get() >= maxPages) {
+            return;
         }
 
-        if (currentUrl == null) continue;
+        String currentUrl = queue.poll();
+
+        if (currentUrl == null) {
+            try { Thread.sleep(100); } catch (Exception e) {}
+            continue;
+        }
+
+        if (crawledCount.incrementAndGet() > maxPages) {
+            return;
+        }
 
         Document doc = pageFetcher.fetchPage(currentUrl);
         if (doc == null) continue;
@@ -80,10 +91,7 @@ private void crawlTask() {
                 continue;
             }
 
-            synchronized (queue) {
-                queue.add(absUrl);
-            }
-
+            queue.add(absUrl);
             redisService.markVisited(absUrl);
         }
     }
