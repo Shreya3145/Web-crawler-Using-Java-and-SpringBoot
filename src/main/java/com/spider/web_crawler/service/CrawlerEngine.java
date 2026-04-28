@@ -6,6 +6,8 @@ import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Service
 public class CrawlerEngine {
@@ -14,6 +16,8 @@ public class CrawlerEngine {
     private final PageFetcher pageFetcher;
     private final PageExtractor pageExtractor;
     private final RedisService redisService;
+
+    private final ExecutorService executor = Executors.newFixedThreadPool(10);
 
     public CrawlerEngine(PageFetcher pageFetcher, PageExtractor pageExtractor, RedisService redisService) {
         this.pageFetcher = pageFetcher;
@@ -28,25 +32,61 @@ public class CrawlerEngine {
 
         int crawledCount = 0;
 
-        while (!queue.isEmpty() && crawledCount < maxPages) { //visited.size() < maxPages
-            String currentUrl = queue.poll();
-            crawledCount++;
-
-            Document doc = pageFetcher.fetchPage(currentUrl);
-            if (doc == null) continue;
-
-            pageExtractor.extractAndSave(doc, currentUrl);
-
-            Elements links = doc.select("a[href]");
-            for (Element link : links) {
-                String absUrl = link.attr("abs:href");
-                if (absUrl.isEmpty() ||  redisService.isVisited(absUrl) || !absUrl.startsWith("http")) {
-                    continue;
-                }
-                queue.add(absUrl);
-                redisService.markVisited(absUrl);
-                // visited.add(absUrl);
+            for (int i = 0; i < maxPages; i++) {
+                executor.submit(this::crawlTask);
             }
+        }
+
+//        while (!queue.isEmpty() && crawledCount < maxPages) { //visited.size() < maxPages
+//            String currentUrl = queue.poll();
+//            crawledCount++;
+//
+//            Document doc = pageFetcher.fetchPage(currentUrl);
+//            if (doc == null) continue;
+//
+//            pageExtractor.extractAndSave(doc, currentUrl);
+//
+//            Elements links = doc.select("a[href]");
+//            for (Element link : links) {
+//                String absUrl = link.attr("abs:href");
+//                if (absUrl.isEmpty() ||  redisService.isVisited(absUrl) || !absUrl.startsWith("http")) {
+//                    continue;
+//                }
+//                queue.add(absUrl);
+//                redisService.markVisited(absUrl);
+//                // visited.add(absUrl);
+//            }
+private void crawlTask() {
+    while (true) {
+        String currentUrl;
+
+        synchronized (queue) {
+            if (queue.isEmpty()) return;
+            currentUrl = queue.poll();
+        }
+
+        if (currentUrl == null) continue;
+
+        Document doc = pageFetcher.fetchPage(currentUrl);
+        if (doc == null) continue;
+
+        pageExtractor.extractAndSave(doc, currentUrl);
+
+        Elements links = doc.select("a[href]");
+        for (Element link : links) {
+            String absUrl = link.attr("abs:href");
+
+            if (absUrl.isEmpty() || redisService.isVisited(absUrl) || !absUrl.startsWith("http")) {
+                continue;
+            }
+
+            synchronized (queue) {
+                queue.add(absUrl);
+            }
+
+            redisService.markVisited(absUrl);
         }
     }
 }
+}
+
