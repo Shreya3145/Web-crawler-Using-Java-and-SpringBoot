@@ -29,7 +29,22 @@ public class PageExtractor {
             jobPosting.setSource(host);
             jobPosting.setUrl(url);
             jobPosting.setJobTitle(doc.title());
-            jobPosting.setJobDescription(doc.body().text());
+
+            org.jsoup.select.Elements mainContent = doc.select("main, article, [class*='job-description'], [id*='job-description'], [class*='posting'], [id*='content']");
+            org.jsoup.nodes.Element contentElement = mainContent.isEmpty() ? doc.body() : mainContent.first();
+
+            contentElement.select("br").append("\\n");
+            contentElement.select("p").prepend("\\n\\n");
+            contentElement.select("div").prepend("\\n");
+            contentElement.select("li").prepend("\\n- ");
+            contentElement.select("h1, h2, h3, h4, h5, h6").prepend("\\n\\n");
+
+            String formattedText = contentElement.text()
+                    .replace("\\n", "\n")
+                    .replaceAll("\n{3,}", "\n\n")
+                    .trim();
+
+            jobPosting.setJobDescription(formattedText);
             jobPosting.setCompany("Unknown");
             jobPosting.setLocation("Unknown");
 
