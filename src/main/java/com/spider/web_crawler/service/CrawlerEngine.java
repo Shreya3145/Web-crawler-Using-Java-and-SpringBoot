@@ -4,7 +4,6 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
-
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
@@ -35,8 +34,15 @@ public class CrawlerEngine {
         // visited.add(url);
         int THREADS = 10;
 
+        String seedDomain;
+        try {
+            seedDomain = new java.net.URL(url).getHost();
+        } catch (Exception e) {
+            return;
+        }
+
         for (int i = 0; i < THREADS; i++) {
-            executor.submit(() -> crawlTask(maxPages));
+            executor.submit(() -> crawlTask(maxPages, seedDomain));
         }
         System.out.println("Starting crawl with seed URL: " + url + ", maxPages: " + maxPages);
         System.out.println("Crawled: " + crawledCount.get());
@@ -60,8 +66,10 @@ public class CrawlerEngine {
 //                redisService.markVisited(absUrl);
 //                // visited.add(absUrl);
 //            }
-private void crawlTask(int maxPages) {
+private void crawlTask(int maxPages,  String seedDomain){
     while (true) {
+
+        if (queue.size() > 10000) return;
 
         if (crawledCount.get() >= maxPages) {
             return;
@@ -70,7 +78,12 @@ private void crawlTask(int maxPages) {
         String currentUrl = queue.poll();
 
         if (currentUrl == null) {
-            try { Thread.sleep(100); } catch (Exception e) {}
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException  e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
             continue;
         }
 
@@ -81,18 +94,29 @@ private void crawlTask(int maxPages) {
         Document doc = pageFetcher.fetchPage(currentUrl);
         if (doc == null) continue;
 
+        System.out.println("Crawled: " + crawledCount.get() + " | URL: " + currentUrl);
+
         pageExtractor.extractAndSave(doc, currentUrl);
 
         Elements links = doc.select("a[href]");
         for (Element link : links) {
             String absUrl = link.attr("abs:href");
+            try {
+                String linkHost = new java.net.URL(absUrl).getHost();
 
-            if (absUrl.isEmpty() || redisService.isVisited(absUrl) || !absUrl.startsWith("http")) {
-                continue;
+                if (absUrl.isEmpty()
+                        || redisService.isVisited(absUrl)
+                        || !absUrl.startsWith("http")
+                        || !linkHost.endsWith(seedDomain)) {
+                    continue;
+                }
+
+                queue.add(absUrl);
+                redisService.markVisited(absUrl);
             }
-
-            queue.add(absUrl);
-            redisService.markVisited(absUrl);
+            catch (Exception e) {
+               continue;
+            }
         }
     }
 }
