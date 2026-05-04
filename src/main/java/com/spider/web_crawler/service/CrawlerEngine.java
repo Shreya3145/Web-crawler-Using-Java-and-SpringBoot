@@ -5,6 +5,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -17,6 +18,9 @@ public class CrawlerEngine {
     private final PageExtractor pageExtractor;
     private final RedisService redisService;
     private final AtomicInteger crawledCount = new AtomicInteger(0); //crawl counter
+
+    private final Map<String, Long> domainLastAccess = new ConcurrentHashMap<>();
+    private static final long DELAY_MS = 500;
 
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
 
@@ -70,6 +74,7 @@ private void crawlTask(int maxPages,  String seedDomain){
             return;
         }
 
+        applyRateLimit(currentUrl);
         Document doc = pageFetcher.fetchPage(currentUrl);
         if (doc == null) continue;
 
@@ -94,7 +99,7 @@ private void crawlTask(int maxPages,  String seedDomain){
                 redisService.markVisited(absUrl);
             }
             catch (Exception e) {
-               continue;
+                System.out.println(e.getMessage());
             }
         }
     }
@@ -121,5 +126,23 @@ private void crawlTask(int maxPages,  String seedDomain){
     public void onShutdown() {
         shutdown();
     }
+    private void applyRateLimit(String url) {
+        try {
+            String domain = new java.net.URL(url).getHost();
+            long now = System.currentTimeMillis();
+
+            domainLastAccess.putIfAbsent(domain, 0L);
+            long lastAccess = domainLastAccess.get(domain);
+
+            if (now - lastAccess < DELAY_MS) {
+                Thread.sleep(DELAY_MS - (now - lastAccess));
+            }
+
+            domainLastAccess.put(domain, System.currentTimeMillis());
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
 }
 
