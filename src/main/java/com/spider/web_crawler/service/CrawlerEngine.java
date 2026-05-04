@@ -12,8 +12,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class CrawlerEngine {
-    // private final Queue<String> queue = new LinkedList<>();
-    // private final Set<String> visited = new HashSet<>();
     private final Queue<String> queue = new ConcurrentLinkedQueue<>();
     private final PageFetcher pageFetcher;
     private final PageExtractor pageExtractor;
@@ -47,25 +45,6 @@ public class CrawlerEngine {
         System.out.println("Starting crawl with seed URL: " + url + ", maxPages: " + maxPages);
         System.out.println("Crawled: " + crawledCount.get());
     }
-//        while (!queue.isEmpty() && crawledCount < maxPages) { //visited.size() < maxPages
-//            String currentUrl = queue.poll();
-//            crawledCount++;
-//
-//            Document doc = pageFetcher.fetchPage(currentUrl);
-//            if (doc == null) continue;
-//
-//            pageExtractor.extractAndSave(doc, currentUrl);
-//
-//            Elements links = doc.select("a[href]");
-//            for (Element link : links) {
-//                String absUrl = link.attr("abs:href");
-//                if (absUrl.isEmpty() ||  redisService.isVisited(absUrl) || !absUrl.startsWith("http")) {
-//                    continue;
-//                }
-//                queue.add(absUrl);
-//                redisService.markVisited(absUrl);
-//                // visited.add(absUrl);
-//            }
 private void crawlTask(int maxPages,  String seedDomain){
     while (true) {
 
