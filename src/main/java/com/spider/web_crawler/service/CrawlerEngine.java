@@ -3,6 +3,8 @@ package com.spider.web_crawler.service;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,6 +23,8 @@ public class CrawlerEngine {
 
     private final Map<String, Long> domainLastAccess = new ConcurrentHashMap<>();
     private static final long DELAY_MS = 500;
+
+    private static final Logger log = LoggerFactory.getLogger(CrawlerEngine.class);
 
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
 
@@ -46,13 +50,16 @@ public class CrawlerEngine {
         for (int i = 0; i < THREADS; i++) {
             executor.submit(() -> crawlTask(maxPages, seedDomain));
         }
-        System.out.println("Starting crawl with seed URL: " + url + ", maxPages: " + maxPages);
-        System.out.println("Crawled: " + crawledCount.get());
+        log.info("Starting crawl with seed URL: {}, maxPages: {}", url, maxPages);
+        log.info("Crawled: {}", crawledCount.get());
     }
 private void crawlTask(int maxPages,  String seedDomain){
     while (true) {
 
-        if (queue.size() > 10000) return;
+        if (queue.size() > 10000) {
+            log.warn("Queue size exceeded limit, stopping thread");
+            return;
+        }
 
         if (crawledCount.get() >= maxPages) {
             return;
@@ -76,9 +83,10 @@ private void crawlTask(int maxPages,  String seedDomain){
 
         applyRateLimit(currentUrl);
         Document doc = pageFetcher.fetchPage(currentUrl);
-        if (doc == null) continue;
-
-        System.out.println("Crawled: " + crawledCount.get() + " | URL: " + currentUrl);
+        if (doc == null){
+            log.warn("Failed to fetch or parse URL: {}", currentUrl);
+            continue;
+        }
 
         pageExtractor.extractAndSave(doc, currentUrl);
 
@@ -99,13 +107,13 @@ private void crawlTask(int maxPages,  String seedDomain){
                 redisService.markVisited(absUrl);
             }
             catch (Exception e) {
-                System.out.println(e.getMessage());
+                log.warn("Skipping invalid URL: {}", absUrl, e);
             }
         }
     }
 }
     public void shutdown() {
-        System.out.println("Shutting down crawler...");
+        log.info("Shutting down crawler...");
 
         executor.shutdown();
 
@@ -140,7 +148,7 @@ private void crawlTask(int maxPages,  String seedDomain){
 
             domainLastAccess.put(domain, System.currentTimeMillis());
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            log.warn("Rate limiting failed for URL: {}", url, e);
         }
     }
 
