@@ -120,5 +120,27 @@ private void crawlTask(int maxPages,  String seedDomain){
         }
     }
 }
+    public void shutdown() {
+        System.out.println("Shutting down crawler...");
+
+        executor.shutdown();
+
+        try {
+            if (!executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                System.out.println("Forcing shutdown...");
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+
+        System.out.println("Crawler stopped.");
+    }
+
+    @jakarta.annotation.PreDestroy
+    public void onShutdown() {
+        shutdown();
+    }
 }
 
